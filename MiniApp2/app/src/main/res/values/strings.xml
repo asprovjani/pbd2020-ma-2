@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">MiniApp2</string>
+    <string name="logo">logo</string>
+    <string name="pbd2020">PBD2020</string>
+    <string name="miniapp">Android Mini App 2</string>
+    <string name="song">(Song Title)</string>
+    <string name="songDuration">(Song Duration)</string>
+    <string name="btnPlay">Play</string>
+    <string name="btnPause">Pause</string>
+    <string name="btnStop">Stop</string>
+    <string name="btngOn">G-ON</string>
+    <string name="btngOff">G-OFF</string>
+    <string name="btnExit">Exit</string>
+    <string name="channelDescription">Posts notifications related to the MediaPlayerService</string>
 </resources>
