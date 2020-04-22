@@ -11,7 +11,9 @@ import android.content.res.AssetFileDescriptor;
 import android.media.MediaPlayer;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
@@ -19,6 +21,8 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.Random;
 
 public class MediaPlayerService extends Service {
@@ -36,19 +40,26 @@ public class MediaPlayerService extends Service {
 
     private boolean isMediaPlayerRunning;
     private boolean isPaused;
+    private boolean isPlaying;
     private int fileIndex = -1;
     private MediaPlayer mp;
 
 
     private final IBinder serviceBinder = new RunServiceBinder();
+    NotificationCompat.Builder builder;
+    NotificationManager manager;
+
+    private final Handler updateNotificationHandler = new NotificationUpdateHandler(this);
+    private final static int MSG_UPDATE = 0;
 
     @Override
     public void onCreate() {
         Log.d(TAG, "Creating MediaPlayerService");
 
-        isMediaPlayerRunning = false;
+        isPaused = false;
+        isPlaying = false;
 
-        //createNotificationChannel();
+        createNotificationChannel();
     }
 
     @Override
@@ -76,11 +87,11 @@ public class MediaPlayerService extends Service {
         Log.d(TAG, "Destroying MediaPlayerService");
         super.onDestroy();
         if(mp != null)
-            stop();
+            stopPlayer();
     }
 
     public void play() {
-        if(!isMediaPlayerRunning) {
+        if(!isPlaying) {
             try {
                 if(mp == null) {
                     mp = new MediaPlayer();
@@ -91,8 +102,8 @@ public class MediaPlayerService extends Service {
                             stopPlayer();
                         }
                     });
+                    isMediaPlayerRunning = true;
                 }
-
                 if(!isPaused) {
                     fileIndex = randomIndex();
                     AssetFileDescriptor descriptor = getAssets().openFd(fileNames[fileIndex]);
@@ -103,21 +114,22 @@ public class MediaPlayerService extends Service {
 
                 mp.start();
                 isPaused = false;
-                isMediaPlayerRunning = true;
+                isPlaying = true;
             } catch (Exception e) {
                 Log.d(TAG, "play: Error");
                 e.printStackTrace();
             }
         }
         else {
-            Log.e(TAG, "already playing song");
+            mp.start();
+            isPaused = false;
         }
+        updateNotificationHandler.sendEmptyMessage(MSG_UPDATE);
     }
 
     public void pause() {
         if(mp != null) {
             isPaused = true;
-            isMediaPlayerRunning = false;
             mp.pause();
         }
     }
@@ -131,19 +143,22 @@ public class MediaPlayerService extends Service {
             mp.release();
             mp = null;
             isPaused = false;
-            isMediaPlayerRunning = false;
+            isPlaying = false;
             Toast.makeText(this, "Player Stopped", Toast.LENGTH_LONG).show();
+            builder.setContentTitle(getString(R.string.song))
+                   .setContentText(getString(R.string.songDuration));
+            manager.notify(NOTIFICATION_ID, builder.build());
+            updateNotificationHandler.removeMessages(MSG_UPDATE);
         }
     }
 
-    /*
     private Notification createNotification() {
         Intent actionIntent = new Intent(this, MediaPlayerService.class);
         actionIntent.setAction(PLAYER_STOP);
         PendingIntent actionPendingIntent =
                 PendingIntent.getService(this, 0, actionIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
+        builder = new NotificationCompat.Builder(this, channelId)
                 .setContentTitle(getString(R.string.song))
                 .setContentText(getString(R.string.songDuration))
                 .setSmallIcon(R.mipmap.ic_launcher)
@@ -158,6 +173,15 @@ public class MediaPlayerService extends Service {
         return builder.build();
     }
 
+    public void updateNotification() {
+        if(isPlaying) {
+            builder.setContentTitle(songTitle())
+                   .setContentText(songDuration());
+
+            manager.notify(NOTIFICATION_ID, builder.build());
+        }
+    }
+
     private void createNotificationChannel() {
         if(Build.VERSION.SDK_INT < 26) {
             return;
@@ -167,7 +191,7 @@ public class MediaPlayerService extends Service {
                     "Foreground service channel", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription(getString(R.string.channelDescription));
 
-            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             manager.createNotificationChannel(channel);
         }
     }
@@ -176,14 +200,20 @@ public class MediaPlayerService extends Service {
         startForeground(NOTIFICATION_ID, createNotification());
     }
 
-
-    public void background() {
+    /*public void background() {
         stopForeground(true);
-    }
-     */
+    }*/
 
     public boolean isMediaPlayerRunning() {
         return isMediaPlayerRunning;
+    }
+
+    public boolean isPaused() {
+        return isPaused;
+    }
+
+    public boolean isPlaying() {
+        return isPlaying;
     }
 
     /**
@@ -210,7 +240,10 @@ public class MediaPlayerService extends Service {
                 duration += "00:" + elapsedTimeSeconds + "/";
         }
         else {
-            duration += (int) Math.floor(elapsedTimeSeconds/60) + ":" + elapsedTimeSeconds%60 + "/";
+            if(elapsedTimeSeconds%60 < 10)
+                duration += (int) Math.floor(elapsedTimeSeconds/60) + ":0" + elapsedTimeSeconds%60 + "/";
+            else
+                duration += (int) Math.floor(elapsedTimeSeconds/60) + ":" + elapsedTimeSeconds%60 + "/";
         }
 
         duration += durationMinutes + ":";
@@ -222,6 +255,10 @@ public class MediaPlayerService extends Service {
         return duration;
     }
 
+    /**
+     * Returns title of currently playing song
+     * @return songTitle
+     */
     public String songTitle() {
         if(fileIndex != -1)
             return fileNames[fileIndex];
@@ -232,6 +269,25 @@ public class MediaPlayerService extends Service {
     public class RunServiceBinder extends Binder {
         MediaPlayerService getService() {
             return MediaPlayerService.this;
+        }
+    }
+
+    static class NotificationUpdateHandler extends Handler {
+        private final static int UPDATE_RATE_MS = 1000;
+        private final WeakReference<MediaPlayerService> serivce;
+
+        NotificationUpdateHandler(MediaPlayerService service) {
+            this.serivce = new WeakReference<>(service);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            if(MSG_UPDATE == msg.what) {
+                Log.d(TAG, "updating time");
+
+                serivce.get().updateNotification();
+                sendEmptyMessageDelayed(MSG_UPDATE, UPDATE_RATE_MS);
+            }
         }
     }
 }

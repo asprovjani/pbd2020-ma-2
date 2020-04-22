@@ -1,5 +1,6 @@
 package si.uni_lj.fri.pbd.miniapp2;
 
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.Service;
@@ -8,6 +9,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.res.AssetFileDescriptor;
 import android.media.MediaPlayer;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -47,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
         songDuration = (TextView) findViewById(R.id.songDuration);
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     protected void onStart() {
         super.onStart();
@@ -55,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
 
         Intent i = new Intent(this, MediaPlayerService.class);
         i.setAction(MediaPlayerService.PLAYER_START);
-        startService(i);
+        startForegroundService(i);
 
         bindService(i, connection, 0);
     }
@@ -66,13 +69,10 @@ public class MainActivity extends AppCompatActivity {
         updateUIStopRun();
 
         if(serviceBound) {
-            /*if(mpService.isMediaPlayerRunning()) {
-                // TODO: start service in foreground
-                mpService.foreground();
-            }
-            else
+            if(!mpService.isPlaying() && !mpService.isPaused()) {
                 stopService(new Intent(this, MediaPlayerService.class));
-            */
+            }
+
             unbindService(connection);
             serviceBound = false;
         }
@@ -98,7 +98,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     private void updateUIStartRun() {
         updateTimeHandler.sendEmptyMessage(MSG_UPDATE);
     }
@@ -111,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateSongTimer() {
         if(serviceBound) {
-            if(mpService.isMediaPlayerRunning()) {
+            if(mpService.isPlaying()) {
                 songDuration.setText(mpService.songDuration());
                 songTitle.setText(mpService.songTitle());
             }
@@ -119,12 +118,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     static class UIUpdateHandler extends Handler {
-        private final static int UPDATE_RATE_MS = 1000;
-        private final WeakReference<MainActivity> activity;
+            private final static int UPDATE_RATE_MS = 1000;
+            private final WeakReference<MainActivity> activity;
 
-        UIUpdateHandler(MainActivity activity) {
-            this.activity = new WeakReference<>(activity);
-        }
+            UIUpdateHandler(MainActivity activity) {
+                this.activity = new WeakReference<>(activity);
+            }
 
         @Override
         public void handleMessage(Message msg) {
@@ -132,6 +131,7 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "updating time");
 
                 activity.get().updateSongTimer();
+                activity.get().mpService.updateNotification();
                 sendEmptyMessageDelayed(MSG_UPDATE, UPDATE_RATE_MS);
             }
         }
@@ -144,11 +144,10 @@ public class MainActivity extends AppCompatActivity {
 
             MediaPlayerService.RunServiceBinder binder = (MediaPlayerService.RunServiceBinder) service;
             mpService = binder.getService();
-            //mpService.background();
+            mpService.foreground();
             serviceBound = true;
-            if(mpService.isMediaPlayerRunning()) {
-                //updateUIStartRun();
-            }
+            if(mpService.isPlaying())
+                updateUIStartRun();
         }
 
         @Override
