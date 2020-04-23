@@ -1,5 +1,6 @@
 package si.uni_lj.fri.pbd.miniapp2;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -15,7 +16,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.util.Log;
-import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -30,7 +30,10 @@ public class MediaPlayerService extends Service {
     private static final String channelId = "MediaServicePlayer_background";
     private static final int NOTIFICATION_ID = 1;
     public static final String PLAYER_START = "Start MediaPlayerService";
+    public static final String PLAYER_PLAY = "Play MediaPlayerService";
+    public static final String PLAYER_PAUSE = "Pause MediaPlayerService";
     public static final String PLAYER_STOP = "Stop MediaPlayerService";
+    public static final String PLAYER_EXIT = "Exit MediaPlayerService";
 
     private static final String[] fileNames = {
             "Rage Against The Machine - People Of The Sun.mp3",
@@ -52,12 +55,35 @@ public class MediaPlayerService extends Service {
     private final Handler updateNotificationHandler = new NotificationUpdateHandler(this);
     private final static int MSG_UPDATE = 0;
 
+    Intent playIntent, pauseIntent, stopIntent, exitIntent;
+    PendingIntent playPendingIntent, pausePendingIntent, stopPendingIntent, exitPendingIntent;
+
     @Override
     public void onCreate() {
         Log.d(TAG, "Creating MediaPlayerService");
 
         isPaused = false;
         isPlaying = false;
+
+        playIntent = new Intent(this, MediaPlayerService.class);
+        playIntent.setAction(PLAYER_PLAY);
+        playPendingIntent =
+                PendingIntent.getService(this, 0, playIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        pauseIntent = new Intent(this, MediaPlayerService.class);
+        pauseIntent.setAction(PLAYER_PAUSE);
+        pausePendingIntent =
+                PendingIntent.getService(this, 0, pauseIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        stopIntent = new Intent(this, MediaPlayerService.class);
+        stopIntent.setAction(PLAYER_STOP);
+        stopPendingIntent =
+                PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        exitIntent = new Intent(this, MediaPlayerService.class);
+        exitIntent.setAction(PLAYER_EXIT);
+        exitPendingIntent =
+                PendingIntent.getService(this, 0, exitIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
         createNotificationChannel();
     }
@@ -66,9 +92,28 @@ public class MediaPlayerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "Starting MediaPlayerService");
 
-        if(intent.getAction() == PLAYER_STOP) {
-            stopForeground(true);
-            stopSelf();
+        switch (intent.getAction()) {
+            case PLAYER_PLAY:
+                play();
+                updateNotificationButtons("PAUSE_STOP_EXIT");
+                break;
+            case PLAYER_PAUSE:
+                pause();
+                updateNotificationButtons("PLAY_STOP_EXIT");
+                break;
+            case PLAYER_STOP:
+                stopPlayer();
+                updateNotificationButtons("PLAY_STOP_EXIT");
+                break;
+            case PLAYER_EXIT:
+                Intent exitApp = new Intent();
+                exitApp.setAction("APP_EXIT");
+                sendBroadcast(exitApp);
+                if(isPlaying || !isPaused)
+                    stopPlayer();
+                stopForeground(true);
+                stopSelf();
+                break;
         }
 
         return Service.START_STICKY;
@@ -124,6 +169,8 @@ public class MediaPlayerService extends Service {
             mp.start();
             isPaused = false;
         }
+
+        updateNotificationButtons("PAUSE_STOP_EXIT");
         updateNotificationHandler.sendEmptyMessage(MSG_UPDATE);
     }
 
@@ -131,12 +178,13 @@ public class MediaPlayerService extends Service {
         if(mp != null) {
             isPaused = true;
             mp.pause();
+            updateNotificationButtons("PLAY_STOP_EXIT");
         }
     }
 
-    public void stop() {
+    /*public void stop() {
         stopPlayer();
-    }
+    }*/
 
     public void stopPlayer() {
         if(mp != null) {
@@ -148,22 +196,20 @@ public class MediaPlayerService extends Service {
             builder.setContentTitle(getString(R.string.song))
                    .setContentText(getString(R.string.songDuration));
             manager.notify(NOTIFICATION_ID, builder.build());
+            updateNotificationButtons("PLAY_STOP_EXIT");
             updateNotificationHandler.removeMessages(MSG_UPDATE);
         }
     }
 
     private Notification createNotification() {
-        Intent actionIntent = new Intent(this, MediaPlayerService.class);
-        actionIntent.setAction(PLAYER_STOP);
-        PendingIntent actionPendingIntent =
-                PendingIntent.getService(this, 0, actionIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-
         builder = new NotificationCompat.Builder(this, channelId)
                 .setContentTitle(getString(R.string.song))
                 .setContentText(getString(R.string.songDuration))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setChannelId(channelId)
-                .addAction(android.R.drawable.ic_media_pause, "Stop", actionPendingIntent);
+                .addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent)
+                .addAction(android.R.drawable.btn_default, "Stop", stopPendingIntent)
+                .addAction(android.R.drawable.ic_delete, "Exit", exitPendingIntent);
 
         Intent resultIntent = new Intent(this, MainActivity.class);
         PendingIntent resultPendingIntent =
@@ -180,6 +226,24 @@ public class MediaPlayerService extends Service {
 
             manager.notify(NOTIFICATION_ID, builder.build());
         }
+    }
+
+    @SuppressLint("RestrictedApi")
+    private void updateNotificationButtons(String state) {
+        if(state.equals("PLAY_STOP_EXIT")) {
+            builder.mActions.clear();
+            builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent)
+                    .addAction(android.R.drawable.btn_default, "Stop", stopPendingIntent)
+                    .addAction(android.R.drawable.ic_delete, "Exit", exitPendingIntent);
+        }
+        else {
+            builder.mActions.clear();
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent)
+                    .addAction(android.R.drawable.btn_default, "Stop", stopPendingIntent)
+                    .addAction(android.R.drawable.ic_delete, "Exit", exitPendingIntent);
+        }
+
+        manager.notify(NOTIFICATION_ID, builder.build());
     }
 
     private void createNotificationChannel() {
@@ -199,10 +263,6 @@ public class MediaPlayerService extends Service {
     public void foreground() {
         startForeground(NOTIFICATION_ID, createNotification());
     }
-
-    /*public void background() {
-        stopForeground(true);
-    }*/
 
     public boolean isMediaPlayerRunning() {
         return isMediaPlayerRunning;

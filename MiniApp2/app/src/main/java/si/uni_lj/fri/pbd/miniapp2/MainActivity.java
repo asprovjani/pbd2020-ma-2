@@ -4,11 +4,15 @@ import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.res.AssetFileDescriptor;
 import android.media.MediaPlayer;
+import android.net.ConnectivityManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -33,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
 
     Button btnPlay, btnPause, btnStop, btngOn, btngOff, btnExit;
     TextView songTitle, songDuration;
+    BroadcastReceiver receiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,6 +52,21 @@ public class MainActivity extends AppCompatActivity {
         btnExit = (Button) findViewById(R.id.btnExit);
         songTitle = (TextView) findViewById(R.id.songTitle);
         songDuration = (TextView) findViewById(R.id.songDuration);
+
+
+        IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+        filter.addAction("APP_EXIT");
+
+        receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if(intent.getAction() == "APP_EXIT") {
+                    exit(null);
+                }
+            }
+        };
+
+        registerReceiver(receiver, filter);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -78,6 +98,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(receiver != null) {
+            unregisterReceiver(receiver);
+            receiver = null;
+        }
+    }
+
     public void play(View v) {
         if(serviceBound) {
             mpService.play();
@@ -93,9 +122,22 @@ public class MainActivity extends AppCompatActivity {
 
     public void stop(View v) {
         if(serviceBound) {
-            mpService.stop();
+            mpService.stopPlayer();
             updateUIStopRun();
         }
+    }
+
+    public void exit(View v) {
+        if(mpService.isMediaPlayerRunning()) {
+            mpService.stopForeground(true);
+            stopService(new Intent(this, MediaPlayerService.class));
+            if(serviceBound) {
+                unbindService(connection);
+                serviceBound = false;
+            }
+        }
+        finishAndRemoveTask();
+        System.exit(0);
     }
 
     private void updateUIStartRun() {
