@@ -8,8 +8,8 @@
 
     <ImageView
         android:id="@+id/imageView"
-        android:layout_width="wrap_content"
-        android:layout_height="251dp"
+        android:layout_width="363dp"
+        android:layout_height="184dp"
         android:layout_marginStart="30dp"
         android:layout_marginTop="45dp"
         android:contentDescription="@string/logo"
@@ -67,6 +67,7 @@
         android:layout_marginStart="53dp"
         android:layout_marginTop="100dp"
         android:layout_marginEnd="54dp"
+        android:onClick="gesturesOff"
         android:text="@string/btngOff"
         app:layout_constraintEnd_toStartOf="@+id/btnExit"
         app:layout_constraintHorizontal_bias="0.0"
@@ -79,6 +80,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="20dp"
         android:layout_marginTop="100dp"
+        android:onClick="gesturesOn"
         android:text="@string/btngOn"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/btnPlay" />

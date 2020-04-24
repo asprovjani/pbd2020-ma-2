@@ -53,20 +53,7 @@ public class MainActivity extends AppCompatActivity {
         songTitle = (TextView) findViewById(R.id.songTitle);
         songDuration = (TextView) findViewById(R.id.songDuration);
 
-
-        IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-        filter.addAction("APP_EXIT");
-
-        receiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if(intent.getAction() == "APP_EXIT") {
-                    exit(null);
-                }
-            }
-        };
-
-        registerReceiver(receiver, filter);
+        registerBroadcastReceiver();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -107,6 +94,65 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * BroadcastReceiver for receiving commands from MediaPlayerService
+     */
+    private void registerBroadcastReceiver() {
+        IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+        filter.addAction("APP_EXIT");
+
+        receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if(intent.getAction() == "APP_EXIT") {
+                    exit(null);
+                }
+            }
+        };
+
+        registerReceiver(receiver, filter);
+    }
+
+    /**
+     * ServiceConnection for binding to MediaPlayerService
+     */
+    private ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            Log.d(TAG, "MediaPlayerService bound");
+
+            MediaPlayerService.RunServiceBinder binder = (MediaPlayerService.RunServiceBinder) service;
+            mpService = binder.getService();
+            mpService.foreground();
+            serviceBound = true;
+            if(mpService.isPlaying())
+                updateUIStartRun();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            Log.d(TAG, "MediaPlayerService disconnect");
+
+            serviceBound = false;
+        }
+    };
+
+    //==================================== GESTURES ==========================================//
+
+    public void gesturesOn(View v) {
+        Toast.makeText(this, "Gestures On", Toast.LENGTH_LONG).show();
+        mpService.startAccelerationService();
+    }
+
+    public void gesturesOff(View v) {
+        Toast.makeText(this, "Gestures Off", Toast.LENGTH_LONG).show();
+        mpService.stopAccelerationService();
+    }
+
+    //========================================================================================//
+
+    //================================== MEDIA PLAYER ========================================//
+
     public void play(View v) {
         if(serviceBound) {
             mpService.play();
@@ -128,17 +174,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void exit(View v) {
-        if(mpService.isMediaPlayerRunning()) {
-            mpService.stopForeground(true);
-            stopService(new Intent(this, MediaPlayerService.class));
-            if(serviceBound) {
-                unbindService(connection);
-                serviceBound = false;
-            }
+
+        if(mpService.accSerivce != null)
+            mpService.stopAccelerationService();
+
+        mpService.stopForeground(true);
+        stopService(new Intent(this, MediaPlayerService.class));
+        if(serviceBound) {
+            unbindService(connection);
+            serviceBound = false;
         }
+
         finishAndRemoveTask();
         System.exit(0);
     }
+
+    //========================================================================================//
+
+    //===================================== UI ===============================================//
 
     private void updateUIStartRun() {
         updateTimeHandler.sendEmptyMessage(MSG_UPDATE);
@@ -170,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void handleMessage(Message msg) {
             if(MSG_UPDATE == msg.what) {
-                Log.d(TAG, "updating time");
+                //Log.d(TAG, "updating time");
 
                 activity.get().updateSongTimer();
                 activity.get().mpService.updateNotification();
@@ -178,26 +231,5 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
-    private ServiceConnection connection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            Log.d(TAG, "MediaPlayerService bound");
-
-            MediaPlayerService.RunServiceBinder binder = (MediaPlayerService.RunServiceBinder) service;
-            mpService = binder.getService();
-            mpService.foreground();
-            serviceBound = true;
-            if(mpService.isPlaying())
-                updateUIStartRun();
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            Log.d(TAG, "MediaPlayerService disconnect");
-
-            serviceBound = false;
-        }
-    };
 
 }
